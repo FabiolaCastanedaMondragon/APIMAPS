@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Mapa Full Screen con Panel Lateral Blur</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+
+<style>
+:root {
+    --color-bg: #1e272e; /* Fondo más suave */
+    --color-panel: rgba(30, 39, 46, 0.75); /* Panel translúcido oscuro */
+    --color-white: #e0e0e0; /* Blanco suave para textos */
+    --color-text-dark: #3a4750; /* Texto oscuro para inputs enfocados */
+    --color-accent: #007bff; /* Azul primario más clásico */
+    --color-accent-light: #4dabf7; /* Azul más claro para efectos */
+    --blur-level: 25px;
+    --radius-lg: 20px;
+    --radius-md: 10px; /* Radio ligeramente más pequeño */
+    --shadow-strong: 0 12px 40px rgba(0, 0, 0, 0.5); /* Sombra más pronunciada */
+    --font-size-label: 1.05rem; /* Tamaño de fuente ligeramente ajustado */
+    --font-weight-bold: 600; /* Negrita menos pesada */
+    --transition-fast: 0.2s ease;
+    --transition-slow: 0.35s ease-in-out;
+}
+
+/* Importar una fuente moderna (ej. Poppins) */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+
+* {
+    box-sizing: border-box;
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--color-bg);
+    color: var(--color-white);
+    font-family: 'Poppins', sans-serif; /* Usar la nueva fuente */
+    line-height: 1.6;
+}
+
+/* Contenedor general */
+#container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Mapa */
+#map {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    filter: brightness(0.9) saturate(1.1); /* Ajuste sutil */
+    transition: filter var(--transition-slow);
+    cursor: crosshair;
+}
+
+/* Panel lateral */
+#sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 420px; /* Un poco más ancho */
+    padding: 30px;
+    background: var(--color-panel);
+    backdrop-filter: blur(var(--blur-level));
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    box-shadow: var(--shadow-strong);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    transition: all var(--transition-slow);
+    border-right: 1px solid rgba(255, 255, 255, 0.05); /* Borde sutil */
+}
+
+/* Scroll moderno */
+#sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+#sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+}
+#sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+
+/* Títulos */
+#sidebar label {
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-label);
+    margin-bottom: 6px; /* Espaciado ajustado */
+    display: block;
+    color: var(--color-white); /* Asegurar color */
+}
+
+/* Inputs */
+#sidebar input[type="text"],
+#sidebar input[type="number"],
+#sidebar input[readonly] {
+    width: 100%;
+    padding: 12px 14px;
+    margin-bottom: 18px; /* Espaciado ajustado */
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.1); /* Borde sutil */
+    background: rgba(255, 255, 255, 0.08); /* Fondo más discreto */
+    color: var(--color-white);
+    font-size: 0.95rem;
+    transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+#sidebar input:focus {
+    background: rgba(255, 255, 255, 0.95); /* Fondo casi blanco al enfocar */
+    border-color: var(--color-accent-light);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+    outline: none;
+    color: var(--color-text-dark); /* Texto oscuro para mejor contraste */
+}
+#sidebar input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+
+/* Botones */
+#controls button {
+    position: relative;
+    background: var(--color-accent);
+    color: #fff;
+    font-size: 1.05rem; /* Tamaño de fuente ligeramente reducido */
+    font-weight: var(--font-weight-bold);
+    padding: 14px 28px; /* Padding ajustado */
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow:
+        0 4px 15px rgba(0, 123, 255, 0.4), /* Sombra más suave */
+        inset 0 1px 0 rgba(255, 255, 255, 0.15); /* Brillo sutil */
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+    overflow: hidden;
+    cursor: pointer;
+    letter-spacing: 0.5px; /* Espaciado entre letras */
+}
+#controls button::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(120deg, rgba(255,255,255,0.15), transparent 70%); /* Brillo más sutil */
+    transform: rotate(25deg);
+    animation: shimmer 2.5s infinite;
+    pointer-events: none;
+}
+#controls button:hover {
+    transform: translateY(-2px); /* Pequeño levantamiento */
+    box-shadow:
+        0 6px 20px rgba(0, 123, 255, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    background: var(--color-accent-light); /* Cambio de color al pasar el ratón */
+}
+#controls button:active {
+    transform: translateY(0); /* Vuelve a su posición original */
+    box-shadow:
+        0 2px 8px rgba(0, 123, 255, 0.3),
+        inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) rotate(25deg); }
+    100% { transform: translateX(200%) rotate(25deg); }
+}
+
+/* Botones en grupo */
+#controls .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 25px; /* Espaciado ajustado */
+}
+
+/* Opciones con imágenes */
+.transport-option, .fuel-option {
+    display: flex;
+    gap: 12px; /* Espaciado ajustado */
+    flex-wrap: wrap;
+    margin: 10px 0 20px; /* Espaciado ajustado */
+}
+.transport-option img,
+.fuel-option img {
+    width: 54px; /* Tamaño ligeramente más pequeño */
+    height: 54px;
+    border-radius: 14px; /* Bordes más suaves */
+    border: 2px solid transparent; /* Borde más delgado */
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25); /* Sombra más sutil */
+    background-color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.transport-option img.selected,
+.fuel-option img.selected {
+    border-color: var(--color-accent-light); /* Color de borde al seleccionar */
+    transform: scale(1.1); /* Zoom más sutil */
+    box-shadow: 0 6px 24px var(--color-accent); /* Sombra más pronunciada al seleccionar */
+}
+
+/* Mostrar diesel según tipo */
+#fuel-selection {
+    margin-top: -5px; /* Espaciado ajustado */
+    margin-bottom: 15px; /* Espaciado ajustado */
+}
+#fuel-selection img#diesel {
+    display: none;
+}
+.truck-selected #fuel-selection img#diesel,
+.trailer-selected #fuel-selection img#diesel {
+    display: inline-block;
+}
+
+/* Estilos para el panel de instrucciones dentro del sidebar */
+#route-instructions {
+    background: rgba(255, 255, 255, 0.06); /* Fondo más suave */
+    border-radius: var(--radius-md);
+    padding: 15px;
+    margin-top: 25px; /* Espaciado ajustado */
+    color: var(--color-white);
+    font-size: 0.9rem; /* Fuente ligeramente más pequeña */
+    line-height: 1.6;
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.05); /* Borde sutil */
+}
+
+#route-instructions h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--color-accent-light); /* Color para el título */
+    font-weight: var(--font-weight-bold);
+    font-size: 1.1rem;
+}
+
+#route-instructions ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#route-instructions li {
+    margin-bottom: 6px; /* Espaciado ajustado */
+    padding-left: 10px;
+    border-left: 3px solid var(--color-accent);
+    color: rgba(255, 255, 255, 0.85); /* Color de texto suave */
+}
+
+#route-instructions li:last-child {
+    margin-bottom: 0;
+}
+
+
+/* Ocultar el panel por defecto de Leaflet Routing Machine */
+.leaflet-routing-container {
+    display: none !important;
+}
+
+/* Responsivo */
+@media (max-width: 850px) {
+    #sidebar {
+        width: 100%;
+        height: 55vh; /* Un poco más alto en móvil */
+        bottom: 0;
+        top: auto;
+        border-radius: 20px 20px 0 0;
+        flex-direction: column;
+        padding: 25px; /* Padding ajustado */
+        overflow-y: scroll;
+        box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.4); /* Sombra superior en móvil */
+        border-right: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.05); /* Borde superior en móvil */
+    }
+    #map {
+        filter: brightness(1); /* Sin filtro para el mapa en móvil */
+    }
+}
+
+/* Ajustes para navegadores de escritorio más anchos si es necesario */
+@media (min-width: 1200px) {
+    #sidebar {
+        width: 450px; /* Quizás un poco más ancho en pantallas grandes */
+    }
+}
+</style>
+</head>
+<body>
+
+<div id="container">
+  <section id="map"></section>
+
+  <aside id="sidebar">
+    <div id="controls">
+      <label for="inputOrigin">Origen:</label>
+      <input type="text" id="inputOrigin" placeholder="Escribe el lugar de origen" autocomplete="off" />
+
+      <label for="inputDestination">Destino:</label>
+      <input type="text" id="inputDestination" placeholder="Escribe el lugar de destino" autocomplete="off" />
+
+      <div class="btn-group">
+        <button type="button" onclick="geocodeRoute()">Trazar ruta</button>
+        <button type="button" onclick="calculateManhattan()">Ruta Manhattan</button>
+      </div>
+    </div>
+
+    <form id="routeForm" autocomplete="off">
+      <label>Tipo de transporte:</label>
+      <div class="transport-option" id="transport-options">
+        <img src="static/css/motorbike.png" id="motorcycle" alt="Motocicleta" title="Motocicleta" onclick="selectTransport('motorcycle')" />
+        <img src="static/css/sport-car.png" id="car" alt="Carro" title="Carro" onclick="selectTransport('car')" />
+        <img src="static/css/semi.png" id="trailer" alt="Tráiler" title="Tráiler" onclick="selectTransport('trailer')" />
+        <img src="static/css/bus.png" id="truck" alt="Camión" title="Camión" onclick="selectTransport('truck')" />
+        <img src="static/css/walk.png" id="walking" alt="Caminando" title="Caminando" onclick="selectTransport('walking')" />
+        <img src="static/css/bike.avif" id="bicycle" alt="Bicicleta" title="Bicicleta" onclick="selectTransport('bicycle')" />
+      </div>
+
+      <div id="fuel-selection" style="display:none;">
+        <label>Tipo de combustible:</label>
+        <div class="fuel-option" id="fuel-options">
+          <img src="static/css/oil-station.png" id="magna" alt="Magna" title="Magna" onclick="selectFuel('magna')" />
+          <img src="static/css/gas-station.png" id="premium" alt="Premium" title="Premium" onclick="selectFuel('premium')" />
+          <img src="static/css/diesel.avif" id="diesel" alt="Diesel" title="Diesel" />
+        </div>
+      </div>
+      
+      <div id="fuel-inputs-container">
+          <label for="fuel_efficiency">Rendimiento (km/l):</label>
+          <input type="number" id="fuel_efficiency" step="0.1" min="0" oninput="updateFuelCalculations()" />
+
+          <label for="fuel_liters">Litros de combustible:</label>
+          <input type="text" id="fuel_liters" readonly />
+
+          <label for="fuel_cost">Costo de combustible:</label>
+          <input type="text" id="fuel_cost" readonly />
+      </div>
+
+      <label for="distance">Distancia (km):</label>
+      <input type="text" id="distance" readonly />
+
+      <label for="operating_hours">Horas de operación:</label>
+      <input type="text" id="operating_hours" readonly />
+    </form>
+
+    <div id="route-instructions">
+        <h3>Instrucciones de la Ruta</h3>
+        <ul id="instructions-list">
+            <li>No hay ruta trazada aún.</li>
+        </ul>
+    </div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+
+<script>
+  var map = L.map('map').setView([19.4326, -99.1332], 14); // Coordenadas centradas en CDMX
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Custom Icons
+  var originIcon = L.icon({
+      iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+  });
+
+  var destinationIcon = L.icon({
+      iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+  });
+
+
+  var routeControl = null; // Para la ruta Dijkstra normal
+  var manhattanRoute = null; // Para la ruta Manhattan adaptada a la cuadrícula
+
+  var transportType = 'car';
+  var fuelType = '';
+  var fuelPrice = 0;
+  
+  // Variables para la selección por clic en el mapa
+  var isSelectingOrigin = true; // true = origen, false = destino
+  var originCoords = null; // [lat, lon]
+  var destinationCoords = null; // [lat, lon]
+  var originMarker = null;
+  var destinationMarker = null;
+
+  // Store the last calculated distance and time to re-calculate fuel efficiency
+  var lastCalculatedDistanceKm = 0;
+
+  const defaultSettings = {
+    motorcycle: { fuelTypes: ['magna', 'premium'], defaultFuel: 'magna', defaultEfficiency: 30, speed: 60 },
+    car:        { fuelTypes: ['magna', 'premium'], defaultFuel: 'magna', defaultEfficiency: 20, speed: 70 },
+    trailer:    { fuelTypes: ['diesel'], defaultFuel: 'diesel', defaultEfficiency: 5, speed: 50 },
+    truck:      { fuelTypes: ['diesel'], defaultFuel: 'diesel', defaultEfficiency: 8, speed: 55 },
+    walking:    { fuelTypes: [], defaultFuel: '', defaultEfficiency: 0, speed: 5 },
+    bicycle:    { fuelTypes: [], defaultFuel: [], defaultEfficiency: 0, speed: 15 } // Bicicleta y caminando no usan combustible
+  };
+
+  // Helper function to clear all routes and markers from the map
+  // This is primarily used when initiating a *completely new* route selection (e.g., clicking on the map for the first point)
+  function clearAllMapObjects() {
+      if (routeControl) {
+          map.removeControl(routeControl);
+          routeControl = null;
+      }
+      if (manhattanRoute) {
+          map.removeLayer(manhattanRoute);
+          manhattanRoute = null;
+      }
+      if (originMarker) {
+          map.removeLayer(originMarker);
+          originMarker = null;
+      }
+      if (destinationMarker) {
+          map.removeLayer(destinationMarker);
+          destinationMarker = null;
+      }
+      // Reset sidebar values
+      document.getElementById('distance').value = '';
+      document.getElementById('operating_hours').value = '';
+      document.getElementById('fuel_liters').value = '';
+      document.getElementById('fuel_cost').value = '';
+      lastCalculatedDistanceKm = 0;
+      // Clear instructions
+      document.getElementById('instructions-list').innerHTML = '<li>No hay ruta trazada aún.</li>';
+  }
+
+  // Helper function to set/update markers on the map
+  function setMarkersFromCoords(originLatLng, destLatLng) {
+      if (originMarker) map.removeLayer(originMarker);
+      if (destinationMarker) map.removeLayer(destinationMarker);
+
+      if (originLatLng) {
+          originMarker = L.marker(originLatLng, { icon: originIcon }).addTo(map).bindPopup("Origen").openPopup();
+      }
+      if (destLatLng) {
+          destinationMarker = L.marker(destLatLng, { icon: destinationIcon }).addTo(map).bindPopup("Destino").openPopup();
+      }
+  }
+
+  // Function to update the information in the sidebar
+  function updateRouteInfo(distanceKmValue) {
+    lastCalculatedDistanceKm = distanceKmValue;
+    
+    // Calcular tiempo basado en la distancia y la velocidad del transporte actual
+    const speed = defaultSettings[transportType].speed || 1; // Evitar división por cero
+    const totalHoursDecimal = lastCalculatedDistanceKm / speed;
+
+    const hours = Math.floor(totalHoursDecimal);
+    const minutes = Math.round((totalHoursDecimal - hours) * 60);
+    
+    let timeString = '';
+    if (hours > 0) {
+        timeString += hours + ' hora' + (hours === 1 ? '' : 's');
+    }
+    if (minutes > 0) {
+        if (timeString !== '') {
+            timeString += ' y ';
+        }
+        timeString += minutes + ' minuto' + (minutes === 1 ? '' : 's');
+    }
+    if (timeString === '') {
+        timeString = 'Menos de 1 minuto';
+    }
+
+
+    document.getElementById('distance').value = distanceKmValue.toFixed(2);
+    document.getElementById('operating_hours').value = timeString; // Mostrar el tiempo formateado
+
+    updateFuelCalculations(); // Recalculate fuel based on new distance/time
+  }
+
+  // Separate function to update fuel-related calculations (called on efficiency change or route update)
+  function updateFuelCalculations() {
+  const fuelInputsContainer = document.getElementById('fuel-inputs-container');
+  const fuelEfficiencyLabel = fuelInputsContainer.querySelector('label[for="fuel_efficiency"]');
+  const fuelLitersLabel = fuelInputsContainer.querySelector('label[for="fuel_liters"]');
+  const fuelCostLabel = fuelInputsContainer.querySelector('label[for="fuel_cost"]');
+
+  const effInput = document.getElementById('fuel_efficiency');
+  const fuelLitersInput = document.getElementById('fuel_liters');
+  const fuelCostInput = document.getElementById('fuel_cost');
+
+  if (defaultSettings[transportType].fuelTypes.length === 0) {
+    fuelInputsContainer.style.display = 'none';
+    fuelLitersInput.value = "";
+    fuelCostInput.value = "";
+    effInput.value = "";
+    return;
+  } else {
+    fuelInputsContainer.style.display = 'block';
+  }
+
+  let efficiency = parseFloat(effInput.value);
+  if (isNaN(efficiency) || efficiency <= 0) {
+    efficiency = defaultSettings[transportType].defaultEfficiency;
+  }
+
+  const liters = lastCalculatedDistanceKm / efficiency;
+  const cost = liters * fuelPrice;
+
+  const litrosEnteros = Math.floor(liters);
+  const mililitros = Math.round((liters - litrosEnteros) * 1000);
+
+  // Mostrar solo mL si es menor a 1 litro
+  if (litrosEnteros === 0) {
+    fuelLitersInput.value = `${mililitros} mL`;
+  } else {
+    fuelLitersInput.value = `${litrosEnteros} L ${mililitros} mL`;
+  }
+
+  fuelCostInput.value = cost.toFixed(2);
+}
+
+
+
+  // Function to select the type of transport
+  function selectTransport(type) {
+    transportType = type;
+    // Marcar imagen seleccionada
+    document.querySelectorAll('#transport-options img').forEach(img => {
+      img.classList.toggle('selected', img.id === type);
+    });
+
+    // Mostrar combustibles disponibles
+    const fuelDiv = document.getElementById('fuel-selection');
+    if (defaultSettings[type].fuelTypes.length > 0) {
+      fuelDiv.style.display = 'block';
+      // Mostrar solo combustibles válidos
+      document.querySelectorAll('#fuel-options img').forEach(img => {
+        img.style.display = defaultSettings[type].fuelTypes.includes(img.id) ? 'inline-block' : 'none';
+      });
+      selectFuel(defaultSettings[type].defaultFuel);
+    } else {
+      fuelDiv.style.display = 'none';
+      selectFuel(''); // Limpiar selección de combustible si no aplica
+    }
+
+    // Actualizar clase para mostrar diesel si corresponde
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.remove('truck-selected', 'trailer-selected');
+    if (type === 'truck') sidebar.classList.add('truck-selected');
+    if (type === 'trailer') sidebar.classList.add('trailer-selected');
+
+    // Re-calculate fuel info based on new transport settings, but don't clear distance/time
+    // Trigger route info update if there's an existing route to update the time
+    if (lastCalculatedDistanceKm > 0) {
+        updateRouteInfo(lastCalculatedDistanceKm);
+    } else {
+        updateFuelCalculations(); // Just update fuel if no route is drawn yet
+    }
+  }
+
+  // Función para seleccionar el tipo de combustible
+  function selectFuel(fuel) {
+    fuelType = fuel;
+    document.querySelectorAll('#fuel-options img').forEach(img => {
+      img.classList.toggle('selected', img.id === fuel);
+    });
+
+    switch (fuel) {
+      case 'magna': fuelPrice = 23.83; break; // Precio Magna en México
+      case 'premium': fuelPrice = 25.58; break; // Precio Premium en México
+      case 'diesel': fuelPrice = 25.749; break; // Precio Diesel en México
+      default: fuelPrice = 0; break;
+    }
+    updateFuelCalculations(); // Update calculations with new fuel price
+  }
+
+  // Función para geocodificar direcciones y trazar la ruta normal (Dijkstra)
+  async function geocodeRoute() {
+    const originText = document.getElementById('inputOrigin').value.trim();
+    const destinationText = document.getElementById('inputDestination').value.trim();
+
+    if (!originText || !destinationText) {
+        alert('Por favor, ingresa ambas direcciones: origen y destino.');
+        return;
+    }
+
+    try {
+        const coords = await Promise.all([geocodeAddress(originText), geocodeAddress(destinationText)]);
+        originCoords = coords[0];
+        destinationCoords = coords[1];
+
+        if (!originCoords || !destinationCoords) {
+            alert("No se pudieron geocodificar las direcciones.");
+            return;
+        }
+
+        // Limpiar cualquier ruta existente (Dijkstra o Manhattan) antes de trazar una nueva
+        clearAllMapObjects(); 
+        setMarkersFromCoords(originCoords, destinationCoords);
+        map.fitBounds(L.latLngBounds([originCoords, destinationCoords]).pad(0.2));
+
+        // Crear el control de enrutamiento CON CONFIGURACIÓN PARA ESPAÑOL
+        routeControl = L.Routing.control({
+    waypoints: [L.latLng(originCoords), L.latLng(destinationCoords)],
+    routeWhileDragging: false,
+    showAlternatives: false,
+    createMarker: () => null,
+    language: 'es',
+    formatter: new L.Routing.Formatter({
+        language: 'es',
+        units: 'metric'
+    }),
+    // ESTA ES LA PARTE NUEVA (color verde oscuro):
+    lineOptions: {
+        styles: [{
+            color: '#00aa00',  // Color verde
+            opacity: 0.9,      // Opacidad
+            weight: 6          // Grosor de la línea
+        }]
+    }
+}).addTo(map);
+
+        routeControl.on('routesfound', function(e) {
+            const currentRouteDistance = e.routes[0].summary.totalDistance / 1000;
+            updateRouteInfo(currentRouteDistance);
+
+            // Extraer y mostrar instrucciones en español
+            const instructionsList = document.getElementById('instructions-list');
+            instructionsList.innerHTML = '';
+
+            if (e.routes[0] && e.routes[0].instructions) {
+                // Encabezado en español
+                instructionsList.innerHTML = `
+                    <li><strong>Ruta calculada (algoritmo de Dijkstra):</strong></li>
+                    <li>Distancia total: ${currentRouteDistance.toFixed(2)} km</li>
+                    <li>Tiempo estimado: ${document.getElementById('operating_hours').value}</li>
+                    <li>Tipo de transporte: ${getTransportNameInSpanish(transportType)}</li>
+                    <li><strong>Instrucciones detalladas:</strong></li>
+                `;
+                
+                // Instrucciones de navegación
+                e.routes[0].instructions.forEach(inst => {
+                    const listItem = document.createElement('li');
+                    listItem.innerHTML = inst.text + ' (' + (inst.distance / 1000).toFixed(2) + ' km)';
+                    instructionsList.appendChild(listItem);
+                });
+            } else {
+                instructionsList.innerHTML = `
+                    <li>No se encontraron instrucciones detalladas para esta ruta.</li>
+                    <li>Distancia total: ${currentRouteDistance.toFixed(2)} km</li>
+                    <li>Tiempo estimado: ${document.getElementById('operating_hours').value}</li>
+                `;
+            }
+        });
+
+        routeControl.on('routingerror', function(e) {
+            console.error("Error al trazar la ruta Dijkstra:", e);
+            alert("No se pudo trazar la ruta. Intenta con otras ubicaciones o verifica la conectividad de la red vial.");
+            document.getElementById('instructions-list').innerHTML = `
+                <li>Error al trazar la ruta. Verifica las ubicaciones.</li>
+                <li>Posibles causas:</li>
+                <li>- No hay conexión vial entre los puntos</li>
+                <li>- Las direcciones no son accesibles</li>
+                <li>- Problema de conexión con el servicio de mapas</li>
+            `;
+            clearAllMapObjects();
+            setMarkersFromCoords(originCoords, destinationCoords);
+        });
+
+    } catch (error) {
+        console.error("Error geocodificando o trazando ruta:", error);
+        alert("Ocurrió un error al trazar la ruta. Intenta de nuevo.");
+        document.getElementById('instructions-list').innerHTML = `
+            <li>Error grave al procesar la ruta:</li>
+            <li>${error.message}</li>
+        `;
+        clearAllMapObjects();
+        setMarkersFromCoords(originCoords, destinationCoords);
+    }
+}
+
+// Función auxiliar para nombres de transporte en español (debe estar en el ámbito global)
+function getTransportNameInSpanish(type) {
+    const transportNames = {
+        motorcycle: 'Motocicleta',
+        car: 'Automóvil',
+        trailer: 'Tráiler',
+        truck: 'Camión',
+        walking: 'Caminando',
+        bicycle: 'Bicicleta'
+    };
+    return transportNames[type] || type;
+}
+
+  // Función para geocodificar una dirección (texto a coords)
+  function geocodeAddress(address) {
+    return fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+      .then(res => res.json())
+      .then(data => data.length > 0 ? [parseFloat(data[0].lat), parseFloat(data[0].lon)] : null)
+      .catch((error) => {
+        console.error("Error al geocodificar la dirección:", address, error);
+        return null;
+      });
+  }
+
+  // Función para geocodificación inversa (coords a texto de dirección)
+  // Ahora también devuelve si la ubicación parece urbana.
+  function reverseGeocode(latlng) {
+    return fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}&zoom=18&addressdetails=1`)
+      .then(res => res.json())
+      .then(data => {
+        const address = data.address;
+        // Heurística para determinar si es un área urbana:
+        // Busca la presencia de componentes de dirección comunes en áreas urbanas.
+        const isUrbanArea = address && (
+            address.city || address.town || address.village ||
+            address.suburb || address.quarter ||
+            (address.road && (address.city || address.town || address.village || address.suburb)) // Una calle con alguna referencia de localidad
+        );
+        return {
+            name: data.display_name || "Dirección no encontrada",
+            isUrban: !!isUrbanArea // Convertir a booleano
+        };
+      })
+      .catch(error => {
+        console.error("Error en geocodificación inversa:", error);
+        return { name: "Error al obtener dirección", isUrban: false };
+      });
+  }
+
+  // Función para verificar si una coordenada está en una zona urbana (usando reverseGeocode)
+  async function isUrban(coords) {
+      const result = await reverseGeocode({ lat: coords[0], lng: coords[1] });
+      return result.isUrban;
+  }
+
+  // Esta función usa OSRM para obtener rutas reales por calles.
+  // Recibe puntos en formato [lat, lon] y devuelve puntos en [lat, lon]
+  async function fetchRoute(startCoord, endCoord) {
+    // Coordenadas para OSRM deben ser [longitud, latitud]
+    const url = `https://router.project-osrm.org/route/v1/driving/${startCoord[1]},${startCoord[0]};${endCoord[1]},${endCoord[0]}?overview=full&geometries=geojson`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data.routes || data.routes.length === 0) return null;
+      // Las coordenadas de OSRM son [lon, lat], convertimos a [lat, lon] para Leaflet
+      return data.routes[0].geometry.coordinates.map(p => [p[1], p[0]]);
+    } catch (error) {
+      console.error("Error al obtener ruta de OSRM:", error);
+      return null;
+    }
+  }
+
+  function getTotalDistance(routeLatLngs) {
+    let dist = 0;
+    for (let i = 1; i < routeLatLngs.length; i++) {
+      dist += routeLatLngs[i - 1].distanceTo(routeLatLngs[i]); // Usa el método distanceTo de Leaflet
+    }
+    return dist; // Retorna en metros
+  }
+
+
+// Función auxiliar para calcular el ángulo entre tres puntos (en grados)
+// B es el vértice del ángulo. A, B, C son arrays [lat, lon].
+function calculateAngle(A, B, C) {
+  // Convertir lat/lon a radianes para cálculos más precisos si es necesario,
+  // pero para ángulos relativos pequeños, la aproximación con coordenadas planas puede ser suficiente.
+  // Aquí usamos una aproximación simple. Para mayor precisión con distancias largas,
+  // se debería usar geometría esférica o proyectar a un plano cartesiano.
+  const v1 = [A[0] - B[0], A[1] - B[1]]; // Vector BA
+  const v2 = [C[0] - B[0], C[1] - B[1]]; // Vector BC
+
+  const dotProduct = v1[0] * v2[0] + v1[1] * v2[1];
+  const magnitudeV1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+  const magnitudeV2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+
+  if (magnitudeV1 === 0 || magnitudeV2 === 0) return 0; // Evitar división por cero
+
+  let angleRad = Math.acos(dotProduct / (magnitudeV1 * magnitudeV2));
+
+  // Asegurar que el ángulo esté entre 0 y 180 grados
+  if (isNaN(angleRad)) { // Manejar casos donde el dot product esté fuera de [-1, 1] debido a errores de coma flotante
+      angleRad = dotProduct > 0 ? 0 : Math.PI;
+  }
+  
+  return angleRad * 180 / Math.PI; // Convertir a grados
+}
+
+async function calculateManhattan() {
+  let start = originCoords;
+  let end = destinationCoords;
+
+  if (!start || !end) {
+    const originText = document.getElementById('inputOrigin').value.trim();
+    const destinationText = document.getElementById('inputDestination').value.trim();
+
+    if (!originText || !destinationText) {
+      alert('Por favor, ingresa ambas direcciones o selecciona los puntos en el mapa.');
+      return;
+    }
+    const coordsFromInput = await Promise.all([geocodeAddress(originText), geocodeAddress(destinationText)]);
+    start = coordsFromInput[0];
+    end = coordsFromInput[1];
+
+    originCoords = start;
+    destinationCoords = end;
+  }
+
+  if (!start || !end) {
+    alert("No se pudieron geocodificar las direcciones o no se seleccionaron puntos válidos.");
+    return;
+  }
+
+  // Limpiar cualquier ruta existente (Dijkstra o Manhattan) antes de trazar una nueva
+  clearAllMapObjects();
+  setMarkersFromCoords(start, end);
+  map.fitBounds(L.latLngBounds([start, end]).pad(0.2));
+
+  try {
+    // --- Calcular ambas opciones de "L" adaptada a las calles ---
+    // Opción 1: Pivot en (Lat Destino, Lon Origen)
+    const pivot1 = [end[0], start[1]]; // [lat_destination, lon_origin]
+    const segment1_1_osm = await fetchRoute(start, pivot1);
+    const segment1_2_osm = await fetchRoute(pivot1, end);
+
+    let manhattanOption1Points = null;
+    let manhattanOption1Distance = Infinity;
+
+    if (segment1_1_osm && segment1_2_osm) {
+      const angle1 = calculateAngle(start, pivot1, end);
+      const angleTolerance = 7; // Tolerancia de +/- 20 grados respecto a 90 (es decir, entre 70 y 110 grados)
+
+      if (Math.abs(angle1 - 90) <= angleTolerance) {
+        // Unir los segmentos, asegurándose de no duplicar el punto de pivote
+        const joinedPoints1 = [...segment1_1_osm];
+        if (
+          segment1_1_osm.length > 0 &&
+          segment1_2_osm.length > 0 &&
+          segment1_1_osm[segment1_1_osm.length - 1][0] === segment1_2_osm[0][0] &&
+          segment1_1_osm[segment1_1_osm.length - 1][1] === segment1_2_osm[0][1]
+        ) {
+          joinedPoints1.push(...segment1_2_osm.slice(1));
+        } else {
+          joinedPoints1.push(...segment1_2_osm);
+        }
+        manhattanOption1Points = joinedPoints1;
+        manhattanOption1Distance = getTotalDistance(manhattanOption1Points.map(p => L.latLng(p[0], p[1])));
+      } else {
+        console.warn(`Opción 1 descartada: Ángulo de giro (${angle1.toFixed(2)}°) fuera de la tolerancia ortogonal.`);
+      }
+    }
+
+    // Opción 2: Pivot en (Lat Origen, Lon Destino)
+    const pivot2 = [start[0], end[1]]; // [lat_origin, lon_destination]
+    const segment2_1_osm = await fetchRoute(start, pivot2);
+    const segment2_2_osm = await fetchRoute(pivot2, end);
+
+    let manhattanOption2Points = null;
+    let manhattanOption2Distance = Infinity;
+
+    if (segment2_1_osm && segment2_2_osm) {
+      const angle2 = calculateAngle(start, pivot2, end);
+      const angleTolerance = 7; // Misma tolerancia
+
+      if (Math.abs(angle2 - 90) <= angleTolerance) {
+        const joinedPoints2 = [...segment2_1_osm];
+        if (
+          segment2_1_osm.length > 0 &&
+          segment2_2_osm.length > 0 &&
+          segment2_1_osm[segment2_1_osm.length - 1][0] === segment2_2_osm[0][0] &&
+          segment2_1_osm[segment2_1_osm.length - 1][1] === segment2_2_osm[0][1]
+        ) {
+          joinedPoints2.push(...segment2_2_osm.slice(1));
+        } else {
+          joinedPoints2.push(...segment2_2_osm);
+        }
+        manhattanOption2Points = joinedPoints2;
+        manhattanOption2Distance = getTotalDistance(manhattanOption2Points.map(p => L.latLng(p[0], p[1])));
+      } else {
+        console.warn(`Opción 2 descartada: Ángulo de giro (${angle2.toFixed(2)}°) fuera de la tolerancia ortogonal.`);
+      }
+    }
+
+    let finalManhattanPoints = null;
+    let finalManhattanDistanceKm = 0;
+
+    // Seleccionar la mejor opción de "L" adaptada a las calles
+    if (manhattanOption1Points && manhattanOption2Points) {
+      if (manhattanOption1Distance <= manhattanOption2Distance) {
+        finalManhattanPoints = manhattanOption1Points;
+        finalManhattanDistanceKm = manhattanOption1Distance / 1000;
+      } else {
+        finalManhattanPoints = manhattanOption2Points;
+        finalManhattanDistanceKm = manhattanOption2Distance / 1000;
+      }
+    } else if (manhattanOption1Points) {
+      finalManhattanPoints = manhattanOption1Points;
+      finalManhattanDistanceKm = manhattanOption1Distance / 1000;
+    } else if (manhattanOption2Points) {
+      finalManhattanPoints = manhattanOption2Points;
+      finalManhattanDistanceKm = manhattanOption2Distance / 1000;
+    } else {
+      // Si ninguna opción de "L" pudo ser calculada o validada por ángulo
+      alert("No se pudo calcular una ruta Manhattan válida (predominantemente recta) en esta ubicación. Posiblemente no hay caminos disponibles que cumplan con los criterios de giros cercanos a 90 grados.");
+      document.getElementById('instructions-list').innerHTML =
+        '<li>No se pudo calcular la ruta Manhattan válida en esta ubicación.</li>' +
+        '<li>Motivos posibles:</li>' +
+        '<li>- No hay caminos disponibles para conectar los puntos con giros cercanos a 90 grados.</li>' +
+        '<li>- Los puntos están en áreas sin conexión vial adecuada.</li>';
+      return;
+    }
+
+    // --- Nueva validación: Distancia máxima para una ruta "Manhattan" ---
+    const MAX_MANHATTAN_DISTANCE_KM = 100; // Puedes ajustar este valor según tu criterio
+
+    if (finalManhattanDistanceKm > MAX_MANHATTAN_DISTANCE_KM) {
+      alert(`La ruta Manhattan calculada (${finalManhattanDistanceKm.toFixed(2)} km) excede el límite de ${MAX_MANHATTAN_DISTANCE_KM} km para ser considerada válida. Las rutas tan largas suelen contener curvas significativas.`);
+      document.getElementById('instructions-list').innerHTML =
+        `<li>Ruta Manhattan no válida: La distancia (${finalManhattanDistanceKm.toFixed(2)} km) excede el límite de ${MAX_MANHATTAN_DISTANCE_KM} km.</li>` +
+        '<li>Por favor, selecciona puntos más cercanos para una ruta Manhattan.</li>';
+      clearAllMapObjects(); // Limpia la ruta que excede el límite
+      return;
+    }
+
+
+    manhattanRoute = L.polyline(finalManhattanPoints, {
+      color: 'blue',
+      weight: 4,
+      opacity: 0.8,
+      dashArray: '8,6',
+      lineJoin: 'round',
+    }).addTo(map);
+
+    map.fitBounds(manhattanRoute.getBounds().pad(0.2));
+
+    updateRouteInfo(finalManhattanDistanceKm);
+
+    document.getElementById('instructions-list').innerHTML =
+      '<li>Ruta Manhattan calculada (adaptada a calles y con giros cercanos a 90°):</li>' +
+      '<li>Esta es una aproximación de la distancia Manhattan que prioriza segmentos rectos.</li>' +
+      '<li>Distancia: ' + finalManhattanDistanceKm.toFixed(2) + ' km</li>';
+
+  } catch (error) {
+    console.error("Error calculando ruta Manhattan:", error);
+    alert("Ocurrió un error inesperado al calcular la ruta Manhattan. Intenta de nuevo.");
+    document.getElementById('instructions-list').innerHTML =
+      '<li>Error al calcular la ruta Manhattan.</li>' +
+      '<li>Detalles: ' + error.message + '</li>';
+  }
+}
+
+function isStraight(p1, p2, p3) {
+  const angle = calculateAngle(p1, p2, p3);
+  const tolerance = 5; // antes era 10
+
+  return (
+    Math.abs(angle - 180) < tolerance ||
+    Math.abs(angle - 0) < tolerance ||
+    Math.abs(angle - 90) < tolerance
+  );
+}
+
+
+  // --- LÓGICA PARA CLIC EN EL MAPA ---
+  map.on('click', async function(e) {
+      const latlng = e.latlng; // Coordenadas del clic
+
+      if (isSelectingOrigin) {
+          // Este es el primer clic: establecer el origen
+          clearAllMapObjects(); // Limpiar todos los objetos al iniciar una nueva selección de ruta desde el clic en el mapa
+          originCoords = [latlng.lat, latlng.lng];
+          const originReverseGeocode = await reverseGeocode(latlng);
+          document.getElementById('inputOrigin').value = originReverseGeocode.name;
+          setMarkersFromCoords(originCoords, null); // Solo establecer el marcador de origen por ahora
+          isSelectingOrigin = false; // El siguiente clic será el destino
+          document.getElementById('inputDestination').placeholder = "Ahora haz clic para seleccionar el destino";
+          map.getContainer().style.cursor = 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'><circle cx=\'16\' cy=\'16\' r=\'10\' stroke=\'red\' stroke-width=\'2\' fill=\'none\'/></svg>") 16 16, crosshair'; // Círculo rojo para el destino
+      } else {
+          // Este es el segundo clic: establecer el destino
+          destinationCoords = [latlng.lat, latlng.lng];
+          const destinationReverseGeocode = await reverseGeocode(latlng);
+          document.getElementById('inputDestination').value = destinationReverseGeocode.name;
+          setMarkersFromCoords(originCoords, destinationCoords); // Actualizar ambos marcadores
+          isSelectingOrigin = true; // El siguiente clic será el origen para una nueva ruta
+          document.getElementById('inputDestination').placeholder = "Escribe el lugar de destino"; // Restaurar marcador de posición
+          map.getContainer().style.cursor = 'crosshair'; // Restaurar cursor
+          // Ahora que ambos puntos están establecidos, el usuario puede hacer clic en los botones para trazar rutas.
+      }
+  });
+  // --- FIN LÓGICA CLIC EN MAPA ---
+
+
+  // Inicializa el tipo de transporte por defecto al cargar la página
+  selectTransport('car');
+</script>
+
+</body>
+</html>
