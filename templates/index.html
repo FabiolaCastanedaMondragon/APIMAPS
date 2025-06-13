@@ -412,13 +412,13 @@ body, html {
   var lastCalculatedDistanceKm = 0;
 
   const defaultSettings = {
-    motorcycle: { fuelTypes: ['magna', 'premium'], defaultFuel: 'magna', defaultEfficiency: 30, speed: 60 },
-    car:        { fuelTypes: ['magna', 'premium'], defaultFuel: 'magna', defaultEfficiency: 20, speed: 70 },
-    trailer:    { fuelTypes: ['diesel'], defaultFuel: 'diesel', defaultEfficiency: 5, speed: 50 },
-    truck:      { fuelTypes: ['diesel'], defaultFuel: 'diesel', defaultEfficiency: 8, speed: 55 },
-    walking:    { fuelTypes: [], defaultFuel: '', defaultEfficiency: 0, speed: 5 },
-    bicycle:    { fuelTypes: [], defaultFuel: [], defaultEfficiency: 0, speed: 15 } // Bicicleta y caminando no usan combustible
-  };
+    motorcycle: { fuelTypes: ['magna', 'premium'], defaultFuel: 'magna', defaultEfficiency: 30, speed: 50 }, // 50 km/h
+    car:        { fuelTypes: ['magna', 'premium'], defaultFuel: 'magna', defaultEfficiency: 20, speed: 60 }, // 60 km/h
+    trailer:    { fuelTypes: ['diesel'], defaultFuel: 'diesel', defaultEfficiency: 5, speed: 40 },  // 40 km/h
+    truck:      { fuelTypes: ['diesel'], defaultFuel: 'diesel', defaultEfficiency: 8, speed: 45 },  // 45 km/h
+    walking:    { fuelTypes: [], defaultFuel: '', defaultEfficiency: 0, speed: 5 },    // 5 km/h
+    bicycle:    { fuelTypes: [], defaultFuel: [], defaultEfficiency: 0, speed: 15 }    // 15 km/h
+};
 
   // Helper function to clear all routes and markers from the map
   // This is primarily used when initiating a *completely new* route selection (e.g., clicking on the map for the first point)
@@ -466,45 +466,52 @@ body, html {
   function updateRouteInfo(distanceKmValue) {
     lastCalculatedDistanceKm = distanceKmValue;
     
-    // Calcular tiempo basado en la distancia y la velocidad del transporte actual
-    const speed = defaultSettings[transportType].speed || 1; // Evitar división por cero
-    const totalHoursDecimal = lastCalculatedDistanceKm / speed;
-
-    const hours = Math.floor(totalHoursDecimal);
-    const minutes = Math.round((totalHoursDecimal - hours) * 60);
+    // Obtener velocidad del transporte actual (km/h)
+    const speed = defaultSettings[transportType].speed || 1;
     
+    // Calcular tiempo en horas decimales
+    const totalHoursDecimal = distanceKmValue / speed;
+    
+    // Convertir a horas, minutos y segundos
+    const hours = Math.floor(totalHoursDecimal);
+    const minutes = Math.floor((totalHoursDecimal - hours) * 60);
+    const seconds = Math.round((((totalHoursDecimal - hours) * 60 - minutes) * 60));
+    
+    // Formatear el string de tiempo
     let timeString = '';
     if (hours > 0) {
         timeString += hours + ' hora' + (hours === 1 ? '' : 's');
+        if (minutes > 0 || seconds > 0) {
+            timeString += ' ';
+        }
     }
     if (minutes > 0) {
-        if (timeString !== '') {
-            timeString += ' y ';
-        }
         timeString += minutes + ' minuto' + (minutes === 1 ? '' : 's');
+        if (seconds > 0) {
+            timeString += ' ';
+        }
+    }
+    if (seconds > 0 && hours === 0) {
+        timeString += seconds + ' segundo' + (seconds === 1 ? '' : 's');
     }
     if (timeString === '') {
-        timeString = 'Menos de 1 minuto';
+        timeString = 'Menos de 1 segundo';
     }
 
-
     document.getElementById('distance').value = distanceKmValue.toFixed(2);
-    document.getElementById('operating_hours').value = timeString; // Mostrar el tiempo formateado
+    document.getElementById('operating_hours').value = timeString;
 
-    updateFuelCalculations(); // Recalculate fuel based on new distance/time
-  }
+    updateFuelCalculations();
+}
 
   // Separate function to update fuel-related calculations (called on efficiency change or route update)
   function updateFuelCalculations() {
   const fuelInputsContainer = document.getElementById('fuel-inputs-container');
-  const fuelEfficiencyLabel = fuelInputsContainer.querySelector('label[for="fuel_efficiency"]');
-  const fuelLitersLabel = fuelInputsContainer.querySelector('label[for="fuel_liters"]');
-  const fuelCostLabel = fuelInputsContainer.querySelector('label[for="fuel_cost"]');
-
   const effInput = document.getElementById('fuel_efficiency');
   const fuelLitersInput = document.getElementById('fuel_liters');
   const fuelCostInput = document.getElementById('fuel_cost');
 
+  // Ocultar sección si el transporte no usa combustible
   if (defaultSettings[transportType].fuelTypes.length === 0) {
     fuelInputsContainer.style.display = 'none';
     fuelLitersInput.value = "";
@@ -515,25 +522,29 @@ body, html {
     fuelInputsContainer.style.display = 'block';
   }
 
+  // Validar eficiencia
   let efficiency = parseFloat(effInput.value);
   if (isNaN(efficiency) || efficiency <= 0) {
     efficiency = defaultSettings[transportType].defaultEfficiency;
+    effInput.value = efficiency; // Actualizar el input con el valor por defecto
   }
 
+  // Cálculos
   const liters = lastCalculatedDistanceKm / efficiency;
   const cost = liters * fuelPrice;
 
+  // Formatear litros (ej: "5 L 250 mL" o "850 mL")
   const litrosEnteros = Math.floor(liters);
   const mililitros = Math.round((liters - litrosEnteros) * 1000);
-
-  // Mostrar solo mL si es menor a 1 litro
+  
   if (litrosEnteros === 0) {
     fuelLitersInput.value = `${mililitros} mL`;
   } else {
     fuelLitersInput.value = `${litrosEnteros} L ${mililitros} mL`;
   }
 
-  fuelCostInput.value = cost.toFixed(2);
+  // Formatear costo con símbolo de pesos y 2 decimales
+  fuelCostInput.value = `$${cost.toFixed(2)}`;
 }
 
 
